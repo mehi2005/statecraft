@@ -64,24 +64,36 @@ TOOLS = [
     }
 ]
 
+def clean_ticket_id(val):
+    if val is None:
+        return 0
+    # Strip any leading '#' or whitespace if model passed '#9001'
+    cleaned = str(val).lstrip('#').strip()
+    return int(cleaned) if cleaned.isdigit() else val
+
 def execute_tool(name: str, args: dict):
-    if name == "get_ticket":
-        resp = requests.get(f"{BASE_URL}/zendesk/tickets/{int(args['ticket_id'])}")
-    elif name == "list_orders":
-        resp = requests.get(f"{BASE_URL}/shopify/orders", params={"email": args["email"]})
-    elif name == "refund_charge":
-        resp = requests.post(f"{BASE_URL}/stripe/refund", json={"charge_id": args["charge_id"]})
-    elif name == "update_ticket":
-        fraud_val = args.get("fraud_flag", False)
-        if isinstance(fraud_val, str):
-            fraud_val = fraud_val.lower() == "true"
-        resp = requests.patch(
-            f"{BASE_URL}/zendesk/tickets/{int(args['ticket_id'])}",
-            json={"status": args["status"], "fraud_flag": bool(fraud_val)}
-        )
-    else:
-        return {"error": f"Unknown tool: {name}"}
-    return {"status_code": resp.status_code, "body": resp.json()}
+    try:
+        if name == "get_ticket":
+            tid = clean_ticket_id(args.get("ticket_id"))
+            resp = requests.get(f"{BASE_URL}/zendesk/tickets/{tid}")
+        elif name == "list_orders":
+            resp = requests.get(f"{BASE_URL}/shopify/orders", params={"email": args.get("email")})
+        elif name == "refund_charge":
+            resp = requests.post(f"{BASE_URL}/stripe/refund", json={"charge_id": args.get("charge_id")})
+        elif name == "update_ticket":
+            tid = clean_ticket_id(args.get("ticket_id"))
+            fraud_val = args.get("fraud_flag", False)
+            if isinstance(fraud_val, str):
+                fraud_val = fraud_val.lower() == "true"
+            resp = requests.patch(
+                f"{BASE_URL}/zendesk/tickets/{tid}",
+                json={"status": args.get("status"), "fraud_flag": bool(fraud_val)}
+            )
+        else:
+            return {"status_code": 400, "body": {"error": f"Unknown tool: {name}"}}
+        return {"status_code": resp.status_code, "body": resp.json()}
+    except Exception as e:
+        return {"status_code": 400, "body": {"error": f"Tool execution error: {str(e)}"}}
 
 def run_benchmark(model_name="qwen2.5:7b"):
     results = []
