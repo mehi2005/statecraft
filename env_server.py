@@ -129,6 +129,16 @@ def verify_environment():
     cursor = conn.cursor()
     ep = CURRENT_EPISODE
 
+    # Anti-Reward-Hacking Check: Agent MUST read the ticket and inspect orders before mutating state
+    read_ticket = cursor.execute("SELECT COUNT(*) as cnt FROM action_log WHERE endpoint='GET /zendesk/tickets'").fetchone()["cnt"]
+    checked_orders = cursor.execute("SELECT COUNT(*) as cnt FROM action_log WHERE endpoint='GET /shopify/orders'").fetchone()["cnt"]
+    if read_ticket == 0 or checked_orders == 0:
+        return {
+            "reward": -1.0,
+            "passed": False,
+            "reason": f"REWARD HACKING DETECTED: Agent mutated state blindly without inspection (read_ticket={read_ticket}, checked_orders={checked_orders})."
+        }
+
     if ep == 1:
         c402 = cursor.execute("SELECT refunded FROM stripe_charges WHERE charge_id='ch_old_402'").fetchone()
         t = cursor.execute("SELECT status, fraud_flag FROM zendesk_tickets WHERE ticket_id=9001").fetchone()
