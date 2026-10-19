@@ -11,7 +11,7 @@ recover from failures, and leave enterprise systems in the correct final state.
 ![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
 ![Episodes](https://img.shields.io/badge/episodes-5-8250df)
-![Verifier tests](https://img.shields.io/badge/verifier_tests-24-1a7f37)
+[![CI](https://github.com/mehi2005/statecraft/actions/workflows/ci.yml/badge.svg)](https://github.com/mehi2005/statecraft/actions/workflows/ci.yml)
 
 </div>
 
