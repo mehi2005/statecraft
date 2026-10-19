@@ -122,4 +122,6 @@ def run_benchmark(model_name="qwen2.5:7b"):
         print(f"| Episode {ep} | `{rew}` | {passed} | {reason} |")
 
 if __name__ == "__main__":
-    run_benchmark(model_name="qwen2.5:7b")
+    import sys
+    model = sys.argv[1] if len(sys.argv) > 1 else "llama3.2:3b"
+    run_benchmark(model_name=model)
