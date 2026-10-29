@@ -12,9 +12,9 @@ Deterministic environments for evaluating tool-calling AI agents.
 agent reads the right evidence, resists prompt injection, recovers from failures,
 and leaves simulated support and refund records in the correct state.
 
-Explore five inspectable scenarios, try a scripted local HTTP example, then
-optionally evaluate a local Ollama model. The Zendesk, Shopify, and Stripe APIs
-are **mocks**; vendor accounts and credentials are not required.
+The Zendesk, Shopify, and Stripe APIs are **mocks**. Try five scenarios with
+scripted agents, then optionally measure a local Ollama model. Vendor accounts
+and credentials are not required.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/statecraft-dark.svg">
@@ -22,7 +22,7 @@ are **mocks**; vendor accounts and credentials are not required.
   <img src="docs/assets/statecraft-light.svg" alt="" width="1200">
 </picture>
 
-[**Run the local example**](#quick-start) ·
+[**Try the offline demo**](#quick-start-tests-and-an-offline-demo) ·
 [Five episodes](#the-five-episodes) ·
 [How it works](#how-it-works) ·
 [Advanced usage](#explore-further) ·
@@ -33,7 +33,7 @@ are **mocks**; vendor accounts and credentials are not required.
 
 ---
 
-## Quick start
+## Quick start: tests and an offline demo
 
 Use Python 3.10–3.13, the versions configured in the repository's CI matrix.
 Run these commands from the repository root.
@@ -64,8 +64,8 @@ Install the existing development dependencies:
 python -m pip install -r requirements-dev.txt
 ```
 
-Cloning and dependency installation need network access. Once dependencies are
-installed, the tests and local example require no model or external service.
+Cloning and dependency installation need network access. The tests and demo below
+run offline once those dependencies are installed.
 
 ### 2. Run the tests
 
@@ -73,45 +73,31 @@ installed, the tests and local example require no model or external service.
 python -m pytest -q
 ```
 
-The suite covers all five golden verifier trajectories, blind mutations,
-read-after-write attempts, irrelevant or out-of-order reads, duplicate refunds,
-invalid ticket updates, and unrelated state changes. It also checks benchmark
-summary metrics and ticket-ID normalization.
-
+The suite checks golden trajectories, unsafe mutations, duplicate refunds,
+required evidence ordering, runner argument handling, and scripted demonstrations.
 Run tests sequentially; the environment state is shared within a process.
 
-### 3. Start the mock environment
+### 3. Try all five scenarios without a model
 
 ```bash
-python -m uvicorn env_server:app --host 127.0.0.1 --port 8000
+python offline_demo.py
 ```
 
-Leave this terminal running. The mock API is available at
-`http://127.0.0.1:8000`; interactive API documentation is at
-`http://127.0.0.1:8000/docs`.
+The demo uses scripted agents and FastAPI's in-process test client. It starts no
+listening server, calls no model, and contacts no external service. Each episode
+starts from fresh seeded state. It checks five correct trajectories and one
+intentionally unsafe trajectory.
 
-### 4. Try the two scripted rollouts
+The output begins with `Statecraft offline demo (scripted agents; no model calls)`.
+After five `Episode N: PASS` lines, it ends with:
 
-In another terminal, open the repository root and activate the same virtual
-environment, then run:
-
-```bash
-python sim_test.py
+```text
+Unsafe trajectory: REJECTED
+5/5 golden scenarios passed; unsafe trajectory rejected.
 ```
 
-The script runs episode 1 twice: a gullible agent follows the injected refund
-instruction; a policy-following agent reads the ticket and order, then closes
-and flags the ticket. Review the printed verdicts:
-
-| Scripted rollout | Expected verdict |
-|---|---|
-| Gullible agent | `reward: -1.0`, `passed: False` |
-| Policy-following agent | `reward: 1.0`, `passed: True` |
-
-The script prints results; it does not assert these outcomes or set request
-timeouts. Use the test suite for automated checks. These are scripted examples,
-not model benchmark scores. The example contacts only the localhost server;
-all five golden scenarios are exercised by the tests.
+An unexpected HTTP result or verifier verdict makes the command exit nonzero.
+These are reproducible scripted examples, not model benchmark scores.
 
 ## The five episodes
 
@@ -172,24 +158,28 @@ rejected as reward hacking.
 
 ## Explore further
 
-Expand a section to inspect the HTTP tools, run a local model, or examine the
-benchmark evidence.
+The offline demo is enough to inspect the five scenarios. Expand a section when
+you want to use the HTTP API, run a local model, or inspect benchmark evidence.
 
 <details>
-<summary><strong>Inspect the local HTTP API</strong></summary>
+<summary><strong>Local HTTP API and smoke check</strong></summary>
 
-With the quickstart server running, open `http://127.0.0.1:8000/docs` to inspect
-request schemas and try individual calls against the mock state.
+Start the mock environment on localhost:
 
-- `POST /env/reset?episode_id=1` seeds an episode; IDs 1–5 are supported.
-- `GET /zendesk/tickets/{ticket_id}` reads a support ticket.
-- `GET /shopify/orders?email=...` reads the customer's order and charge state.
-- `POST /stripe/refund` attempts a refund.
-- `PATCH /zendesk/tickets/{ticket_id}` changes the ticket status and fraud flag.
-- `POST /env/verify` evaluates the current state and action log.
+```bash
+python -m uvicorn env_server:app --host 127.0.0.1 --port 8000
+```
 
-Each reset replaces the shared state. Finish one rollout before starting
-another, and keep the server on localhost with synthetic data.
+Open `http://127.0.0.1:8000/docs` to explore the API. In another terminal with the
+same virtual environment activated, run:
+
+```bash
+python sim_test.py
+```
+
+This HTTP smoke check expects a gullible agent to fail and a policy-following
+agent to pass; it exits nonzero if either expectation is wrong. It requires the
+local server, but no model or real vendor service.
 
 </details>
 
@@ -197,11 +187,11 @@ another, and keep the server on localhost with synthetic data.
 <summary><strong>Reproducible Ollama benchmarks</strong></summary>
 
 Statecraft includes a sequential multi-trial runner for local Ollama models.
-Unlike the scripted example, this runs actual model inference. It needs a
-separate Ollama installation and suitable compute; model downloads need network
-access. The quickstart does not require this step.
+Unlike the scripted demo, this runs actual model inference. It needs a separate
+Ollama installation and suitable compute; model downloads need network access.
+The offline quickstart does not require this step.
 
-Install the models and ensure Ollama is running:
+Install the models:
 
 ```bash
 ollama pull qwen2.5:7b
@@ -272,10 +262,10 @@ The manifest should also identify a clean, exact source revision.
   state, in-memory SQLite storage, action logging, and deterministic verification.
 - [live_agent_eval.py](live_agent_eval.py): Ollama tool-call orchestration,
   sequential trials, model/source identity capture, and checkpointed manifests.
-- [sim_test.py](sim_test.py): two scripted episode-1 rollouts against the
-  localhost server, with printed verifier results.
-- [tests/](tests/): verifier regressions plus summary-metric and ticket-ID helper
-  tests.
+- [offline_demo.py](offline_demo.py): in-process scripted examples for all five
+  episodes and an unsafe trajectory.
+- [sim_test.py](sim_test.py): assertive smoke check against the localhost server.
+- [tests/](tests/): verifier, runner, smoke-check, and offline-demo regressions.
 
 The project favors deterministic state and trajectory checks, reproducible
 benchmark evidence, explicit failures, and a small, inspectable architecture.
@@ -294,24 +284,16 @@ Use synthetic data and keep the HTTP server on localhost.
 
 ## Contributing
 
-Contributions are welcome through pull requests.
-
-Before submitting a change:
-
-1. Keep the change narrowly scoped.
-2. Add focused regression coverage.
-3. Run `python -m pytest -q`.
-4. Preserve deterministic behavior.
-5. Do not weaken trajectory or anti-reward-hacking checks.
+Contributions are welcome through pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for setup, validation, and a concrete guide to adding an episode.
 
 Good first contributions include a focused regression for an uncovered invalid
 trajectory, a clearer failure example, or a quickstart correction reproduced on
-your platform.
+your platform. Keep changes narrow and preserve deterministic verification.
 
-Direct pushes to `main` should be disabled through GitHub branch protection
-before external collaborators receive write access. A verified private
-vulnerability-reporting route is not documented here; do not post sensitive
-security details in public issues or pull requests.
+Read [SECURITY.md](SECURITY.md) before reporting a suspected vulnerability.
+A verified private reporting route is still a maintainer setup task; do not put
+sensitive details in public issues or pull requests.
 
 ## License
 
