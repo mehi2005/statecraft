@@ -75,6 +75,9 @@ TOOLS = [
         },
     },
 ]
+TOOL_PARAMETERS = {
+    tool["function"]["name"]: tool["function"]["parameters"] for tool in TOOLS
+}
 
 
 def clean_ticket_id(value):
@@ -91,41 +94,76 @@ def response_body(response):
         return {"error": "Tool returned a non-JSON response"}
 
 
+def validate_tool_arguments(name, args):
+    """Check the advertised tool contract before making any HTTP request."""
+    parameters = TOOL_PARAMETERS[name]
+    if not isinstance(args, dict):
+        raise ValueError("Tool arguments must be a JSON object")
+
+    for field in parameters["required"]:
+        if field not in args:
+            raise ValueError(f"Missing required field: {field}")
+
+    normalized = dict(args)
+    field_types = {"integer": int, "string": str, "boolean": bool}
+    for field, definition in parameters["properties"].items():
+        if field not in normalized:
+            continue
+        value = normalized[field]
+        # Keep compatibility with common model output without coercing arbitrary
+        # values (notably truthy integers or unrecognized boolean strings).
+        if field == "ticket_id" and isinstance(value, str):
+            value = clean_ticket_id(value)
+        elif field == "fraud_flag" and isinstance(value, str):
+            if value.lower() in ("true", "false"):
+                value = value.lower() == "true"
+
+        if type(value) is not field_types[definition["type"]]:
+            raise ValueError(f"{field} must be a {definition['type']}")
+        if "enum" in definition and value not in definition["enum"]:
+            raise ValueError(f"{field} must be one of: {', '.join(definition['enum'])}")
+        normalized[field] = value
+    return normalized
+
+
 def execute_tool(name, args, env_base_url, timeout_seconds):
+    if name not in TOOL_PARAMETERS:
+        return {"status_code": 400, "body": {"error": "Unknown tool"}}
+    try:
+        args = validate_tool_arguments(name, args)
+    except ValueError as exc:
+        return {
+            "status_code": 400,
+            "body": {"error": "Invalid tool arguments", "details": str(exc)},
+        }
+
     try:
         if name == "get_ticket":
-            ticket_id = clean_ticket_id(args.get("ticket_id"))
             response = requests.get(
-                f"{env_base_url}/zendesk/tickets/{ticket_id}",
+                f"{env_base_url}/zendesk/tickets/{args['ticket_id']}",
                 timeout=timeout_seconds,
             )
         elif name == "list_orders":
             response = requests.get(
                 f"{env_base_url}/shopify/orders",
-                params={"email": args.get("email")},
+                params={"email": args["email"]},
                 timeout=timeout_seconds,
             )
         elif name == "refund_charge":
             response = requests.post(
                 f"{env_base_url}/stripe/refund",
-                json={"charge_id": args.get("charge_id")},
+                json={"charge_id": args["charge_id"]},
                 timeout=timeout_seconds,
             )
         elif name == "update_ticket":
-            ticket_id = clean_ticket_id(args.get("ticket_id"))
-            fraud_flag = args.get("fraud_flag", False)
-            if isinstance(fraud_flag, str):
-                fraud_flag = fraud_flag.lower() == "true"
             response = requests.patch(
-                f"{env_base_url}/zendesk/tickets/{ticket_id}",
+                f"{env_base_url}/zendesk/tickets/{args['ticket_id']}",
                 json={
-                    "status": args.get("status"),
-                    "fraud_flag": bool(fraud_flag),
+                    "status": args["status"],
+                    "fraud_flag": args["fraud_flag"],
                 },
                 timeout=timeout_seconds,
             )
-        else:
-            return {"status_code": 400, "body": {"error": "Unknown tool"}}
         return {"status_code": response.status_code, "body": response_body(response)}
     except requests.RequestException as exc:
         return {
